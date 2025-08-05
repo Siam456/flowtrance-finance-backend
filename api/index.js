@@ -11,17 +11,17 @@ import mongoSanitize from "express-mongo-sanitize";
 import xss from "xss-clean";
 
 // Import configurations
-import connectDB from "./config/database.js";
-import swaggerSpecs from "./config/swagger.js";
+import connectDB from "../config/database.js";
+import swaggerSpecs from "../config/swagger.js";
 
 // Import routes
-import authRoutes from "./routes/auth.js";
-import dashboardRoutes from "./routes/dashboard.js";
-import transactionRoutes from "./routes/transactions.js";
-import accountRoutes from "./routes/accounts.js";
-import budgetRoutes from "./routes/budgets.js";
-import fixedExpenseRoutes from "./routes/fixedExpenses.js";
-import possibleExpenseRoutes from "./routes/possibleExpenses.js";
+import authRoutes from "../routes/auth.js";
+import dashboardRoutes from "../routes/dashboard.js";
+import transactionRoutes from "../routes/transactions.js";
+import accountRoutes from "../routes/accounts.js";
+import budgetRoutes from "../routes/budgets.js";
+import fixedExpenseRoutes from "../routes/fixedExpenses.js";
+import possibleExpenseRoutes from "../routes/possibleExpenses.js";
 
 // Load environment variables
 dotenv.config();
