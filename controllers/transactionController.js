@@ -1,5 +1,6 @@
 import Transaction from "../models/Transaction.js";
 import Account from "../models/Account.js";
+import { updateTargetProgress } from "./targetSavingsController.js";
 
 export const createTransaction = async (req, res) => {
   try {
@@ -32,6 +33,9 @@ export const createTransaction = async (req, res) => {
     const balanceChange = type === "income" ? amount : -amount;
     account.balance += balanceChange;
     await account.save();
+
+    // Update target savings progress
+    await updateTargetProgress(userId, amount, type);
 
     // Populate account details for response
     await transaction.populate("accountId", "name type");

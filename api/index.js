@@ -22,6 +22,8 @@ import accountRoutes from "../routes/accounts.js";
 import budgetRoutes from "../routes/budgets.js";
 import fixedExpenseRoutes from "../routes/fixedExpenses.js";
 import possibleExpenseRoutes from "../routes/possibleExpenses.js";
+import targetSavingsRoutes from "../routes/targetSavings.js";
+import borrowingRoutes from "../routes/borrowings.js";
 
 // Load environment variables
 dotenv.config();
@@ -121,6 +123,8 @@ app.use("/api/accounts", accountRoutes);
 app.use("/api/budgets", budgetRoutes);
 app.use("/api/fixed-expenses", fixedExpenseRoutes);
 app.use("/api/possible-expenses", possibleExpenseRoutes);
+app.use("/api/target-savings", targetSavingsRoutes);
+app.use("/api/borrowings", borrowingRoutes);
 
 // 404 handler
 app.use("*", (req, res) => {

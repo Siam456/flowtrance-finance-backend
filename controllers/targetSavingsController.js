@@ -1,0 +1,368 @@
+import TargetSavings from "../models/TargetSavings.js";
+import Transaction from "../models/Transaction.js";
+import mongoose from "mongoose";
+
+// Create a new target savings goal
+export const createTargetSavings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const {
+      title,
+      targetAmount,
+      monthlyTarget,
+      targetDate,
+      description,
+      color,
+    } = req.body;
+
+    const targetSavings = new TargetSavings({
+      userId,
+      title,
+      targetAmount: parseFloat(targetAmount),
+      monthlyTarget: parseFloat(monthlyTarget),
+      targetDate: new Date(targetDate),
+      description,
+      color: color || "#3B82F6",
+    });
+
+    await targetSavings.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Target savings created successfully",
+      data: targetSavings.getSummary(),
+    });
+  } catch (error) {
+    console.error("Create target savings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get all target savings for a user
+export const getUserTargetSavings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const targets = await TargetSavings.getUserTargets(userId);
+
+    res.json({
+      success: true,
+      data: targets.map((target) => target.getSummary()),
+    });
+  } catch (error) {
+    console.error("Get target savings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get a specific target savings with analysis
+export const getTargetSavingsById = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    const target = await TargetSavings.getTargetWithAnalysis(id, userId);
+
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        message: "Target savings not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: target,
+    });
+  } catch (error) {
+    console.error("Get target savings by ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Update target savings
+export const updateTargetSavings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const target = await TargetSavings.findOne({ _id: id, userId });
+
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        message: "Target savings not found",
+      });
+    }
+
+    // Update fields
+    if (updateData.title) target.title = updateData.title;
+    if (updateData.targetAmount)
+      target.targetAmount = parseFloat(updateData.targetAmount);
+    if (updateData.monthlyTarget)
+      target.monthlyTarget = parseFloat(updateData.monthlyTarget);
+    if (updateData.targetDate)
+      target.targetDate = new Date(updateData.targetDate);
+
+    if (updateData.description !== undefined)
+      target.description = updateData.description;
+    if (updateData.color) target.color = updateData.color;
+    if (updateData.isActive !== undefined)
+      target.isActive = updateData.isActive;
+
+    await target.save();
+
+    res.json({
+      success: true,
+      message: "Target savings updated successfully",
+      data: target.getSummary(),
+    });
+  } catch (error) {
+    console.error("Update target savings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Delete target savings
+export const deleteTargetSavings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+
+    const target = await TargetSavings.findOne({ _id: id, userId });
+
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        message: "Target savings not found",
+      });
+    }
+
+    await TargetSavings.findByIdAndDelete(id);
+
+    res.json({
+      success: true,
+      message: "Target savings deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete target savings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Check if a transaction would exceed any target savings
+export const checkTargetSavingsWarning = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { amount, type } = req.body;
+
+    // Only check for expense transactions
+    if (type !== "expense") {
+      return res.json({
+        success: true,
+        data: { hasWarning: false },
+      });
+    }
+
+    // Get all active targets
+    const targets = await TargetSavings.find({
+      userId,
+      isActive: true,
+    });
+
+    const warnings = [];
+
+    for (const target of targets) {
+      // Get total balance from accounts
+      const totalBalance = await mongoose.model("Account").aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            isActive: true,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalBalance: { $sum: "$balance" },
+          },
+        },
+      ]);
+
+      const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
+      const availableForSpending = totalBalanceAmount - target.targetAmount;
+      const spendingAmount = parseFloat(amount);
+
+      // Check if this transaction would exceed available spending amount
+      if (spendingAmount > availableForSpending) {
+        warnings.push({
+          targetId: target._id,
+          targetTitle: target.title,
+          type: "overall",
+          totalBalance: totalBalanceAmount,
+          availableForSpending,
+          spendingAmount,
+          excess: spendingAmount - availableForSpending,
+        });
+      }
+
+      // Check monthly target
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const monthlySpending = await Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(userId),
+            type: "expense",
+            date: {
+              $gte: startOfMonth,
+              $lte: endOfMonth,
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalSpent: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      const currentMonthSpending = monthlySpending[0]?.totalSpent || 0;
+      const newMonthlyTotal = currentMonthSpending + spendingAmount;
+
+      if (newMonthlyTotal > target.monthlyTarget) {
+        warnings.push({
+          targetId: target._id,
+          targetTitle: target.title,
+          type: "monthly",
+          currentMonthlySpending: currentMonthSpending,
+          monthlyTarget: target.monthlyTarget,
+          newMonthlyTotal,
+          excess: newMonthlyTotal - target.monthlyTarget,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        hasWarning: warnings.length > 0,
+        warnings,
+      },
+    });
+  } catch (error) {
+    console.error("Check target savings warning error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get savings overview
+export const getSavingsOverview = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get all active targets
+    const targets = await TargetSavings.find({
+      userId,
+      isActive: true,
+    });
+
+    // Get total balance from accounts
+    const totalBalance = await mongoose.model("Account").aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          isActive: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBalance: { $sum: "$balance" },
+        },
+      },
+    ]);
+
+    const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
+    const totalSavingsTarget = targets.reduce(
+      (sum, target) => sum + target.targetAmount,
+      0
+    );
+    const totalCurrentSavings = targets.reduce(
+      (sum, target) => sum + target.currentAmount,
+      0
+    );
+    const availableForSpending = totalBalanceAmount - totalSavingsTarget;
+    const savingsProgress =
+      totalSavingsTarget > 0
+        ? (totalCurrentSavings / totalSavingsTarget) * 100
+        : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalSavingsTarget,
+        totalCurrentSavings,
+        totalBalance: totalBalanceAmount,
+        availableForSpending,
+        savingsProgress,
+        activeTargets: targets.map((target) => target.getSummary()),
+      },
+    });
+  } catch (error) {
+    console.error("Get savings overview error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Update target savings progress (called when transactions are added/updated)
+export const updateTargetProgress = async (userId, amount, type) => {
+  try {
+    // Only update for expense transactions
+    if (type !== "expense") return;
+
+    const targets = await TargetSavings.find({
+      userId,
+      isActive: true,
+    });
+
+    for (const target of targets) {
+      // Update current amount based on transaction type
+      if (type === "expense") {
+        target.currentAmount += amount;
+      } else if (type === "income") {
+        // For income, we might want to reduce the target progress
+        // This is optional and depends on the business logic
+      }
+
+      await target.save();
+    }
+  } catch (error) {
+    console.error("Update target progress error:", error);
+  }
+};

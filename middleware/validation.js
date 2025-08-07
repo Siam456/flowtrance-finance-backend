@@ -19,6 +19,9 @@ export const validate = (schema) => {
   };
 };
 
+// Export validateRequest as an alias for validate
+export const validateRequest = validate;
+
 // Validation schemas
 export const authSchemas = {
   register: Joi.object({
@@ -140,10 +143,70 @@ export const possibleExpenseSchemas = {
   }),
 };
 
+export const targetSavingsSchemas = {
+  create: Joi.object({
+    title: Joi.string().min(1).max(100).required(),
+    targetAmount: Joi.number().positive().required(),
+    monthlyTarget: Joi.number().positive().required(),
+    targetDate: Joi.date().min("now").required(),
+    description: Joi.string().max(500).allow("").optional(),
+    color: Joi.string()
+      .pattern(/^#[0-9A-F]{6}$/i)
+      .optional(),
+  }).custom((value, helpers) => {
+    if (value.monthlyTarget > value.targetAmount) {
+      return helpers.error("any.invalid", {
+        message: "Monthly target cannot be greater than overall target",
+      });
+    }
+    return value;
+  }),
+
+  update: Joi.object({
+    title: Joi.string().min(1).max(100),
+    targetAmount: Joi.number().positive(),
+    monthlyTarget: Joi.number().positive(),
+    targetDate: Joi.date().min("now"),
+    description: Joi.string().max(500).allow(""),
+    color: Joi.string().pattern(/^#[0-9A-F]{6}$/i),
+    isActive: Joi.boolean(),
+  }).custom((value, helpers) => {
+    if (
+      value.monthlyTarget &&
+      value.targetAmount &&
+      value.monthlyTarget > value.targetAmount
+    ) {
+      return helpers.error("any.invalid", {
+        message: "Monthly target cannot be greater than overall target",
+      });
+    }
+    return value;
+  }),
+};
+
 export const transferSchemas = {
   transfer: Joi.object({
     fromAccountId: Joi.string().required(),
     toAccountId: Joi.string().required(),
     amount: Joi.number().positive().required(),
+  }),
+};
+
+export const borrowingSchemas = {
+  create: Joi.object({
+    personName: Joi.string().min(1).max(100).required(),
+    type: Joi.string().valid("borrowed", "lent").required(),
+    amount: Joi.number().positive().required(),
+    accountId: Joi.string().required(),
+    description: Joi.string().max(500).allow("").optional(),
+    dueDate: Joi.string().optional(),
+  }),
+  update: Joi.object({
+    personName: Joi.string().min(1).max(100),
+    type: Joi.string().valid("borrowed", "lent"),
+    amount: Joi.number().positive(),
+    accountId: Joi.string(),
+    description: Joi.string().max(500).allow(""),
+    dueDate: Joi.string().optional(),
   }),
 };
