@@ -6,8 +6,15 @@ import { validateRequest } from "../middleware/validation.js";
 // Create a new borrowing/lending record
 const createBorrowing = async (req, res) => {
   try {
-    const { personName, type, amount, accountId, description, dueDate } =
-      req.body;
+    const {
+      personName,
+      type,
+      amount,
+      accountId,
+      description,
+      transactionDate,
+      dueDate,
+    } = req.body;
 
     // Get account details
     const account = await Account.findById(accountId);
@@ -35,6 +42,7 @@ const createBorrowing = async (req, res) => {
       accountId,
       accountName: account.name,
       description,
+      transactionDate: transactionDate ? new Date(transactionDate) : new Date(),
       dueDate: dueDate ? new Date(dueDate) : null,
       isPaid: false, // Set as paid by default
       paidDate: null, // Set paid date to current date
@@ -43,6 +51,9 @@ const createBorrowing = async (req, res) => {
     await borrowing.save();
 
     // Create a transaction for this borrowing/lending
+    const transactionDateToUse = transactionDate
+      ? new Date(transactionDate)
+      : new Date();
     const transaction = new Transaction({
       userId: req.user.id,
       type: type === "borrowed" ? "income" : "expense",
@@ -53,8 +64,10 @@ const createBorrowing = async (req, res) => {
       } ${personName}${description ? ` - ${description}` : ""}`,
       accountId: accountId,
       accountName: account.name,
-      date: new Date(),
-      time: new Date().toLocaleTimeString(),
+      date: transactionDateToUse || new Date(),
+      time:
+        transactionDateToUse?.toLocaleTimeString() ||
+        new Date().toLocaleTimeString(),
     });
 
     await transaction.save();
@@ -217,7 +230,7 @@ const updateBorrowing = async (req, res) => {
   }
 };
 
-// Mark as paid/unpaid
+// Mark as paid/unpaid and create/remove corresponding transaction and adjust account balance
 const togglePaidStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -238,8 +251,78 @@ const togglePaidStatus = async (req, res) => {
       });
     }
 
-    borrowing.isPaid = isPaid;
-    borrowing.paidDate = isPaid ? new Date() : null;
+    // Load account
+    const account = await Account.findById(borrowing.accountId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Linked account not found",
+      });
+    }
+
+    // If marking as paid: create a counter transaction (repayment) and adjust balance
+    if (isPaid) {
+      // If there is already a repayment transaction, skip creating duplicate
+      if (!borrowing.repaymentTransactionId) {
+        const repaymentType =
+          borrowing.type === "borrowed" ? "expense" : "income";
+        const repaymentCategory =
+          borrowing.type === "borrowed" ? "Loan Repayment" : "Loan Collection";
+        const repaymentDescription = `${
+          borrowing.type === "borrowed" ? "Repayment to" : "Collection from"
+        } ${borrowing.personName}${
+          borrowing.description ? ` - ${borrowing.description}` : ""
+        }`;
+
+        const repaymentDate = new Date();
+        const repaymentTransaction = new Transaction({
+          userId: req.user.id,
+          accountId: borrowing.accountId,
+          type: repaymentType,
+          amount: borrowing.amount,
+          category: repaymentCategory,
+          description: repaymentDescription,
+          date: repaymentDate,
+          time: repaymentDate.toLocaleTimeString(),
+        });
+
+        await repaymentTransaction.save();
+
+        // Adjust account balance: paying back borrowed money reduces balance; collecting lent money increases balance
+        if (borrowing.type === "borrowed") {
+          account.balance -= borrowing.amount;
+        } else if (borrowing.type === "lent") {
+          account.balance += borrowing.amount;
+        }
+        await account.save();
+
+        borrowing.repaymentTransactionId = repaymentTransaction._id;
+      }
+      borrowing.isPaid = true;
+      borrowing.paidDate = new Date();
+    } else {
+      // Marking as unpaid: if a repayment transaction exists, remove it and revert account balance
+      if (borrowing.repaymentTransactionId) {
+        const repaymentTx = await Transaction.findById(
+          borrowing.repaymentTransactionId
+        );
+        if (repaymentTx) {
+          await repaymentTx.deleteOne();
+        }
+        // Revert account balance change performed during repayment creation
+        if (borrowing.type === "borrowed") {
+          account.balance += borrowing.amount;
+        } else if (borrowing.type === "lent") {
+          account.balance -= borrowing.amount;
+        }
+        await account.save();
+
+        borrowing.repaymentTransactionId = undefined;
+      }
+      borrowing.isPaid = false;
+      borrowing.paidDate = null;
+    }
+
     await borrowing.save();
 
     res.json({

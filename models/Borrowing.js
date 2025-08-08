@@ -37,6 +37,12 @@ const borrowingSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    transactionDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      index: true,
+    },
     dueDate: {
       type: Date,
     },
@@ -56,6 +62,14 @@ const borrowingSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Link to repayment transaction (created when marked as paid)
+borrowingSchema.add({
+  repaymentTransactionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Transaction",
+  },
+});
 
 // Indexes for better query performance
 borrowingSchema.index({ userId: 1, type: 1 });

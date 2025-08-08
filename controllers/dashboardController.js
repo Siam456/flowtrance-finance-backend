@@ -8,7 +8,33 @@ import mongoose from "mongoose";
 export const getDashboard = async (req, res) => {
   try {
     const userId = req.user._id;
-    const currentMonth = new Date().toISOString().substring(0, 7);
+    const { month, year } = req.query;
+
+    // Determine the month to query for
+    let queryMonth;
+    if (month && year) {
+      queryMonth = `${year}-${String(month).padStart(2, "0")}`;
+    } else if (month) {
+      queryMonth = `${new Date().getFullYear()}-${String(month).padStart(
+        2,
+        "0"
+      )}`;
+    } else if (year) {
+      queryMonth = `${year}-${String(new Date().getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+    } else {
+      queryMonth = new Date().toISOString().substring(0, 7);
+    }
+
+    // Calculate date range for transactions
+    const startDate = new Date(queryMonth + "-01");
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0
+    );
 
     // Get all data in parallel for better performance
     const [
@@ -20,11 +46,15 @@ export const getDashboard = async (req, res) => {
       analytics,
     ] = await Promise.all([
       Account.find({ userId, isActive: true }).sort({ name: 1 }),
-      Transaction.getUserTransactions(userId, { limit: 50 }),
+      Transaction.getUserTransactions(userId, {
+        startDate: startDate.toISOString().split("T")[0],
+        endDate: endDate.toISOString().split("T")[0],
+        limit: 100,
+      }),
       FixedExpense.getUserFixedExpenses(userId),
       PossibleExpense.getUserPossibleExpenses(userId),
-      Budget.getBudgetWithSpending(userId, currentMonth),
-      getAnalyticsData(userId, currentMonth),
+      Budget.getBudgetWithSpending(userId, queryMonth),
+      getAnalyticsData(userId, queryMonth),
     ]);
 
     // Calculate total balance
@@ -33,21 +63,13 @@ export const getDashboard = async (req, res) => {
       0
     );
 
-    // Calculate monthly totals
+    // Calculate monthly totals (transactions are already filtered by month)
     const monthlyIncome = transactions
-      .filter(
-        (t) =>
-          t.type === "income" &&
-          new Date(t.date).getMonth() === new Date().getMonth()
-      )
+      .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + t.amount, 0);
 
     const monthlyExpenses = transactions
-      .filter(
-        (t) =>
-          t.type === "expense" &&
-          new Date(t.date).getMonth() === new Date().getMonth()
-      )
+      .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + t.amount, 0);
 
     // Group transactions by date for frontend

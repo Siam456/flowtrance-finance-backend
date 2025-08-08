@@ -199,6 +199,7 @@ export const borrowingSchemas = {
     amount: Joi.number().positive().required(),
     accountId: Joi.string().required(),
     description: Joi.string().max(500).allow("").optional(),
+    transactionDate: Joi.date().optional(),
     dueDate: Joi.string().optional(),
   }),
   update: Joi.object({
@@ -207,6 +208,7 @@ export const borrowingSchemas = {
     amount: Joi.number().positive(),
     accountId: Joi.string(),
     description: Joi.string().max(500).allow(""),
+    transactionDate: Joi.date(),
     dueDate: Joi.string().optional(),
   }),
 };
