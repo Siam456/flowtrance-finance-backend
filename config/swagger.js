@@ -36,6 +36,55 @@ const options = {
         },
       },
       schemas: {
+        Borrowing: {
+          type: "object",
+          properties: {
+            _id: { type: "string", example: "65f1f77bcf86cd7994390123" },
+            userId: { type: "string", example: "507f1f77bcf86cd799439011" },
+            personName: { type: "string", example: "Alice" },
+            type: {
+              type: "string",
+              enum: ["borrowed", "lent"],
+              example: "borrowed",
+            },
+            amount: { type: "number", example: 250 },
+            accountId: { type: "string", example: "507f1f77bcf86cd799439011" },
+            accountName: { type: "string", example: "Main Checking" },
+            description: { type: "string", example: "Short-term loan" },
+            dueDate: { type: "string", format: "date", example: "2025-01-31" },
+            isPaid: { type: "boolean", example: false },
+            paidDate: { type: "string", format: "date-time", nullable: true },
+            isActive: { type: "boolean", example: true },
+            createdAt: { type: "string", format: "date-time" },
+            updatedAt: { type: "string", format: "date-time" },
+          },
+        },
+        TargetSavings: {
+          type: "object",
+          properties: {
+            _id: { type: "string", example: "65f1f77bcf86cd7994390456" },
+            userId: { type: "string", example: "507f1f77bcf86cd799439011" },
+            title: { type: "string", example: "New Car" },
+            targetAmount: { type: "number", example: 15000 },
+            currentAmount: { type: "number", example: 3200 },
+            monthlyTarget: { type: "number", example: 500 },
+            startDate: {
+              type: "string",
+              format: "date",
+              example: "2024-01-15",
+            },
+            targetDate: {
+              type: "string",
+              format: "date",
+              example: "2026-06-01",
+            },
+            description: { type: "string", example: "Electric vehicle fund" },
+            isActive: { type: "boolean", example: true },
+            color: { type: "string", example: "#3B82F6" },
+            createdAt: { type: "string", format: "date-time" },
+            updatedAt: { type: "string", format: "date-time" },
+          },
+        },
         User: {
           type: "object",
           properties: {
@@ -258,6 +307,10 @@ const options = {
         description: "User authentication and authorization endpoints",
       },
       {
+        name: "Borrowings",
+        description: "Borrowing and lending management",
+      },
+      {
         name: "Dashboard",
         description: "Main dashboard data and analytics",
       },
@@ -280,6 +333,10 @@ const options = {
       {
         name: "Possible Expenses",
         description: "Planned future expenses",
+      },
+      {
+        name: "Target Savings",
+        description: "Savings goals and analysis",
       },
     ],
   },

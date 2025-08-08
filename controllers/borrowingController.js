@@ -36,8 +36,8 @@ const createBorrowing = async (req, res) => {
       accountName: account.name,
       description,
       dueDate: dueDate ? new Date(dueDate) : null,
-      isPaid: true, // Set as paid by default
-      paidDate: new Date(), // Set paid date to current date
+      isPaid: false, // Set as paid by default
+      paidDate: null, // Set paid date to current date
     });
 
     await borrowing.save();
