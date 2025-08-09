@@ -260,15 +260,17 @@ export const getSavingsOverview = async (req, res) => {
     ]);
 
     const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
-    // Treat configured target amounts as reserved savings for dashboard display
     const totalSavingsTarget = targets.reduce(
       (sum, target) => sum + target.targetAmount,
       0
     );
-    const totalCurrentSavings = totalSavingsTarget;
+    const totalCurrentSavings = targets.reduce(
+      (sum, target) => sum + target.currentAmount,
+      0
+    );
     // Spendable funds without touching savings
     const availableForSpending = Math.max(
-      totalBalanceAmount - totalSavingsTarget,
+      totalBalanceAmount - totalCurrentSavings,
       0
     );
     const savingsProgress =
