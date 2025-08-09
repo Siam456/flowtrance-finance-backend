@@ -147,40 +147,20 @@ export const targetSavingsSchemas = {
   create: Joi.object({
     title: Joi.string().min(1).max(100).required(),
     targetAmount: Joi.number().positive().required(),
-    monthlyTarget: Joi.number().positive().required(),
-    targetDate: Joi.date().min("now").required(),
+    accountId: Joi.string().required(),
     description: Joi.string().max(500).allow("").optional(),
     color: Joi.string()
       .pattern(/^#[0-9A-F]{6}$/i)
       .optional(),
-  }).custom((value, helpers) => {
-    if (value.monthlyTarget > value.targetAmount) {
-      return helpers.error("any.invalid", {
-        message: "Monthly target cannot be greater than overall target",
-      });
-    }
-    return value;
   }),
 
   update: Joi.object({
     title: Joi.string().min(1).max(100),
     targetAmount: Joi.number().positive(),
-    monthlyTarget: Joi.number().positive(),
-    targetDate: Joi.date().min("now"),
+    accountId: Joi.string(),
     description: Joi.string().max(500).allow(""),
     color: Joi.string().pattern(/^#[0-9A-F]{6}$/i),
     isActive: Joi.boolean(),
-  }).custom((value, helpers) => {
-    if (
-      value.monthlyTarget &&
-      value.targetAmount &&
-      value.monthlyTarget > value.targetAmount
-    ) {
-      return helpers.error("any.invalid", {
-        message: "Monthly target cannot be greater than overall target",
-      });
-    }
-    return value;
   }),
 };
 

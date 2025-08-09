@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 
 const targetSavingsSchema = new mongoose.Schema(
   {
+    accountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+      required: true,
+      index: true,
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -25,20 +31,12 @@ const targetSavingsSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    monthlyTarget: {
-      type: Number,
-      required: true,
-      min: 0.01,
-    },
     startDate: {
       type: Date,
       required: true,
       default: Date.now,
     },
-    targetDate: {
-      type: Date,
-      required: true,
-    },
+    // Removed monthlyTarget and targetDate to simplify monthly handling
 
     description: {
       type: String,
@@ -95,13 +93,13 @@ targetSavingsSchema.methods.getSummary = function () {
     title: this.title,
     targetAmount: this.targetAmount,
     currentAmount: this.currentAmount,
-    monthlyTarget: this.monthlyTarget,
+    accountId: this.accountId?._id || this.accountId,
+    accountName: this.accountId?.name,
     progressPercentage: this.progressPercentage,
     remainingAmount: this.remainingAmount,
     isTargetExceeded: this.isTargetExceeded(),
     color: this.color,
     startDate: this.startDate,
-    targetDate: this.targetDate,
     isActive: this.isActive,
   };
 };
@@ -120,29 +118,6 @@ targetSavingsSchema.statics.getTargetWithAnalysis = async function (
   if (!target) return null;
 
   // Get current month's total spending
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const monthlySpending = await mongoose.model("Transaction").aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        type: "expense",
-        date: {
-          $gte: startOfMonth,
-          $lte: endOfMonth,
-        },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalSpent: { $sum: "$amount" },
-      },
-    },
-  ]);
-
   // Get total balance from accounts
   const totalBalance = await mongoose.model("Account").aggregate([
     {
@@ -159,16 +134,22 @@ targetSavingsSchema.statics.getTargetWithAnalysis = async function (
     },
   ]);
 
-  const currentMonthSpending = monthlySpending[0]?.totalSpent || 0;
   const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
-  const availableForSpending = totalBalanceAmount - target.targetAmount;
-  const isOverMonthlyTarget = currentMonthSpending > target.monthlyTarget;
+  // Spendable without touching savings equals totalBalance - totalCurrentSavings
+  const allTargets = await mongoose
+    .model("TargetSavings")
+    .find({ userId, isActive: true });
+  const totalCurrentSavings = allTargets.reduce(
+    (sum, t) => sum + (t.currentAmount || 0),
+    0
+  );
+  const availableForSpending = Math.max(
+    totalBalanceAmount - totalCurrentSavings,
+    0
+  );
 
   return {
     ...target.getSummary(),
-    currentMonthSpending,
-    isOverMonthlyTarget,
-    monthlyRemaining: Math.max(target.monthlyTarget - currentMonthSpending, 0),
     totalBalance: totalBalanceAmount,
     availableForSpending,
   };

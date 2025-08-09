@@ -6,21 +6,13 @@ import mongoose from "mongoose";
 export const createTargetSavings = async (req, res) => {
   try {
     const userId = req.user._id;
-    const {
-      title,
-      targetAmount,
-      monthlyTarget,
-      targetDate,
-      description,
-      color,
-    } = req.body;
+    const { title, targetAmount, description, color, accountId } = req.body;
 
     const targetSavings = new TargetSavings({
       userId,
       title,
+      accountId: new mongoose.Types.ObjectId(accountId),
       targetAmount: parseFloat(targetAmount),
-      monthlyTarget: parseFloat(monthlyTarget),
-      targetDate: new Date(targetDate),
       description,
       color: color || "#3B82F6",
     });
@@ -46,7 +38,10 @@ export const getUserTargetSavings = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const targets = await TargetSavings.getUserTargets(userId);
+    const targets = await TargetSavings.find({ userId }).populate(
+      "accountId",
+      "name"
+    );
 
     res.json({
       success: true,
@@ -109,16 +104,16 @@ export const updateTargetSavings = async (req, res) => {
     if (updateData.title) target.title = updateData.title;
     if (updateData.targetAmount)
       target.targetAmount = parseFloat(updateData.targetAmount);
-    if (updateData.monthlyTarget)
-      target.monthlyTarget = parseFloat(updateData.monthlyTarget);
-    if (updateData.targetDate)
-      target.targetDate = new Date(updateData.targetDate);
 
     if (updateData.description !== undefined)
       target.description = updateData.description;
     if (updateData.color) target.color = updateData.color;
     if (updateData.isActive !== undefined)
       target.isActive = updateData.isActive;
+
+    if (updateData.accountId) {
+      target.accountId = new mongoose.Types.ObjectId(updateData.accountId);
+    }
 
     await target.save();
 
@@ -181,85 +176,44 @@ export const checkTargetSavingsWarning = async (req, res) => {
     }
 
     // Get all active targets
-    const targets = await TargetSavings.find({
-      userId,
-      isActive: true,
-    });
+    const targets = await TargetSavings.find({ userId, isActive: true });
 
     const warnings = [];
 
-    for (const target of targets) {
-      // Get total balance from accounts
-      const totalBalance = await mongoose.model("Account").aggregate([
-        {
-          $match: {
-            userId: new mongoose.Types.ObjectId(userId),
-            isActive: true,
-          },
+    // Compute spendable funds without touching savings: total balance - total current savings
+    const totalBalanceAgg = await mongoose.model("Account").aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          isActive: true,
         },
-        {
-          $group: {
-            _id: null,
-            totalBalance: { $sum: "$balance" },
-          },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBalance: { $sum: "$balance" },
         },
-      ]);
+      },
+    ]);
+    const totalBalanceAmount = totalBalanceAgg[0]?.totalBalance || 0;
+    const totalCurrentSavings = targets.reduce(
+      (sum, t) => sum + (t.currentAmount || 0),
+      0
+    );
+    const availableForSpending = Math.max(
+      totalBalanceAmount - totalCurrentSavings,
+      0
+    );
+    const spendingAmount = parseFloat(amount);
 
-      const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
-      const availableForSpending = totalBalanceAmount - target.targetAmount;
-      const spendingAmount = parseFloat(amount);
-
-      // Check if this transaction would exceed available spending amount
-      if (spendingAmount > availableForSpending) {
-        warnings.push({
-          targetId: target._id,
-          targetTitle: target.title,
-          type: "overall",
-          totalBalance: totalBalanceAmount,
-          availableForSpending,
-          spendingAmount,
-          excess: spendingAmount - availableForSpending,
-        });
-      }
-
-      // Check monthly target
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-      const monthlySpending = await Transaction.aggregate([
-        {
-          $match: {
-            userId: new mongoose.Types.ObjectId(userId),
-            type: "expense",
-            date: {
-              $gte: startOfMonth,
-              $lte: endOfMonth,
-            },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            totalSpent: { $sum: "$amount" },
-          },
-        },
-      ]);
-
-      const currentMonthSpending = monthlySpending[0]?.totalSpent || 0;
-      const newMonthlyTotal = currentMonthSpending + spendingAmount;
-
-      if (newMonthlyTotal > target.monthlyTarget) {
-        warnings.push({
-          targetId: target._id,
-          targetTitle: target.title,
-          type: "monthly",
-          currentMonthlySpending: currentMonthSpending,
-          monthlyTarget: target.monthlyTarget,
-          newMonthlyTotal,
-          excess: newMonthlyTotal - target.monthlyTarget,
-        });
-      }
+    if (spendingAmount > availableForSpending) {
+      warnings.push({
+        type: "overall",
+        totalBalance: totalBalanceAmount,
+        availableForSpending,
+        spendingAmount,
+        excess: spendingAmount - availableForSpending,
+      });
     }
 
     res.json({
@@ -287,7 +241,7 @@ export const getSavingsOverview = async (req, res) => {
     const targets = await TargetSavings.find({
       userId,
       isActive: true,
-    });
+    }).populate("accountId", "name");
 
     // Get total balance from accounts
     const totalBalance = await mongoose.model("Account").aggregate([
@@ -314,7 +268,8 @@ export const getSavingsOverview = async (req, res) => {
       (sum, target) => sum + target.currentAmount,
       0
     );
-    const availableForSpending = totalBalanceAmount - totalSavingsTarget;
+    // Expose savings amount as Available for Spending per new spec
+    const availableForSpending = totalCurrentSavings;
     const savingsProgress =
       totalSavingsTarget > 0
         ? (totalCurrentSavings / totalSavingsTarget) * 100
@@ -340,6 +295,31 @@ export const getSavingsOverview = async (req, res) => {
   }
 };
 
+// Deduct a deficit amount from user's savings goals (currentAmount), highest balances first
+export const deductFromSavings = async (userId, deficitAmount) => {
+  try {
+    let remaining = parseFloat(deficitAmount);
+    if (!remaining || remaining <= 0) return;
+
+    const targets = await TargetSavings.find({
+      userId,
+      isActive: true,
+    }).sort({ currentAmount: -1, createdAt: -1 });
+
+    for (const target of targets) {
+      if (remaining <= 0) break;
+      const deduction = Math.min(target.currentAmount, remaining);
+      if (deduction > 0) {
+        target.currentAmount = Math.max(target.currentAmount - deduction, 0);
+        await target.save();
+        remaining -= deduction;
+      }
+    }
+  } catch (error) {
+    console.error("Deduct from savings error:", error);
+  }
+};
+
 // Update target savings progress (called when transactions are added/updated)
 export const updateTargetProgress = async (userId, amount, type) => {
   try {
@@ -349,7 +329,7 @@ export const updateTargetProgress = async (userId, amount, type) => {
     const targets = await TargetSavings.find({
       userId,
       isActive: true,
-    });
+    }).populate("accountId", "name");
 
     for (const target of targets) {
       // Update current amount based on transaction type

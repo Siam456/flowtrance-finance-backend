@@ -1,6 +1,9 @@
 import Transaction from "../models/Transaction.js";
 import Account from "../models/Account.js";
-import { updateTargetProgress } from "./targetSavingsController.js";
+import {
+  updateTargetProgress,
+  deductFromSavings,
+} from "./targetSavingsController.js";
 
 export const createTransaction = async (req, res) => {
   try {
@@ -34,7 +37,36 @@ export const createTransaction = async (req, res) => {
     account.balance += balanceChange;
     await account.save();
 
-    // Update target savings progress
+    // If expense and overall available-for-spending goes negative, deduct the deficit from savings
+    if (type === "expense") {
+      // Compute user's total balance and monthly commitment
+      const [totalBalanceAgg, activeTargets] = await Promise.all([
+        Account.aggregate([
+          {
+            $match: { userId: account.userId, isActive: true },
+          },
+          {
+            $group: { _id: null, totalBalance: { $sum: "$balance" } },
+          },
+        ]),
+        mongoose
+          .model("TargetSavings")
+          .find({ userId: account.userId, isActive: true }),
+      ]);
+
+      const totalBalance = totalBalanceAgg[0]?.totalBalance || 0;
+      const totalMonthlyTarget = activeTargets.reduce(
+        (sum, t) => sum + (t.monthlyTarget || 0),
+        0
+      );
+      const availableForSpending = totalBalance - totalMonthlyTarget;
+
+      if (availableForSpending < 0) {
+        await deductFromSavings(userId, Math.abs(availableForSpending));
+      }
+    }
+
+    // Update target savings progress (no-op now; handled by overspend deduction)
     await updateTargetProgress(userId, amount, type);
 
     // Populate account details for response
