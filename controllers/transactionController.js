@@ -21,7 +21,53 @@ export const createTransaction = async (req, res) => {
       });
     }
 
-    // Create transaction
+    // If expense, validate available funds and savings coverage BEFORE persisting
+    if (type === "expense") {
+      // 1) Ensure selected account has sufficient balance to avoid negative value
+      if (account.balance < amount) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Insufficient balance in selected account. Please transfer funds or choose a different account.",
+        });
+      }
+
+      // 2) Check if this expense would dip into savings reservations
+      const [totalBalanceAgg, activeTargets] = await Promise.all([
+        Account.aggregate([
+          { $match: { userId: account.userId, isActive: true } },
+          { $group: { _id: null, totalBalance: { $sum: "$balance" } } },
+        ]),
+        TargetSavings.find({ userId: account.userId, isActive: true }),
+      ]);
+
+      const totalBalance = totalBalanceAgg[0]?.totalBalance || 0;
+      const totalCurrentSavings = activeTargets.reduce(
+        (sum, t) => sum + (t.currentAmount || 0),
+        0
+      );
+      const availableForSpending = Math.max(
+        totalBalance - totalCurrentSavings,
+        0
+      );
+      const gap = amount - availableForSpending;
+
+      console.log(gap);
+
+      if (gap > 0) {
+        // Need to cover gap from savings current amounts
+        if (totalCurrentSavings < gap) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Insufficient savings to cover this expense. Please reduce the amount or add funds.",
+          });
+        }
+        await deductFromSavings(userId, gap);
+      }
+    }
+
+    // Create transaction (after validations)
     const transaction = new Transaction({
       userId,
       accountId,
@@ -34,39 +80,12 @@ export const createTransaction = async (req, res) => {
 
     await transaction.save();
 
-    // Update account balance
+    // Update account balance (will not go negative due to pre-check)
     const balanceChange = type === "income" ? amount : -amount;
     account.balance += balanceChange;
     await account.save();
 
-    // If expense and overall available-for-spending goes negative, deduct the deficit from savings
-    if (type === "expense") {
-      // Compute user's total balance and monthly commitment
-      const [totalBalanceAgg, activeTargets] = await Promise.all([
-        Account.aggregate([
-          {
-            $match: { userId: account.userId, isActive: true },
-          },
-          {
-            $group: { _id: null, totalBalance: { $sum: "$balance" } },
-          },
-        ]),
-        TargetSavings.find({ userId: account.userId, isActive: true }),
-      ]);
-
-      const totalBalance = totalBalanceAgg[0]?.totalBalance || 0;
-      const totalMonthlyTarget = activeTargets.reduce(
-        (sum, t) => sum + (t.monthlyTarget || 0),
-        0
-      );
-      const availableForSpending = totalBalance - totalMonthlyTarget;
-
-      if (availableForSpending < 0) {
-        await deductFromSavings(userId, Math.abs(availableForSpending));
-      }
-    }
-
-    // Update target savings progress (no-op now; handled by overspend deduction)
+    // Update target savings progress (tracks spending against targets)
     await updateTargetProgress(userId, amount, type);
 
     // Populate account details for response

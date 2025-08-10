@@ -1,5 +1,6 @@
 import TargetSavings from "../models/TargetSavings.js";
 import Transaction from "../models/Transaction.js";
+import Account from "../models/Account.js";
 import mongoose from "mongoose";
 
 // Create a new target savings goal
@@ -8,16 +9,45 @@ export const createTargetSavings = async (req, res) => {
     const userId = req.user._id;
     const { title, targetAmount, description, color, accountId } = req.body;
 
+    // Validate and fetch account
+    const account = await Account.findOne({ _id: accountId, userId });
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    const goalAmount = parseFloat(targetAmount);
+    if (Number.isNaN(goalAmount) || goalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid target amount",
+      });
+    }
+
+    // Deduct goal amount from the selected account and set as currentAmount
+    if (account.balance < goalAmount) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Insufficient balance in the selected account to fund this savings goal.",
+      });
+    }
+
     const targetSavings = new TargetSavings({
       userId,
       title,
       accountId: new mongoose.Types.ObjectId(accountId),
-      targetAmount: parseFloat(targetAmount),
+      targetAmount: goalAmount,
+      currentAmount: goalAmount,
       description,
       color: color || "#3B82F6",
     });
 
-    await targetSavings.save();
+    // Persist both updates atomically (best-effort without transaction)
+    account.balance -= goalAmount;
+    await Promise.all([targetSavings.save(), account.save()]);
 
     res.status(201).json({
       success: true,
@@ -261,14 +291,17 @@ export const getSavingsOverview = async (req, res) => {
 
     const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
     const totalSavingsTarget = targets.reduce(
-      (sum, target) => sum + target.targetAmount,
+      (sum, target) => sum + (target.targetAmount || 0),
       0
     );
-    // Treat configured target amounts as reserved savings for display
-    const totalCurrentSavings = totalSavingsTarget;
-    // Spendable funds without touching reserved savings
+    // Use actual currentAmount for current savings
+    const totalCurrentSavings = targets.reduce(
+      (sum, target) => sum + (target.currentAmount || 0),
+      0
+    );
+    // Spendable funds without touching current savings
     const availableForSpending = Math.max(
-      totalBalanceAmount - totalSavingsTarget,
+      totalBalanceAmount - totalCurrentSavings,
       0
     );
     const savingsProgress =

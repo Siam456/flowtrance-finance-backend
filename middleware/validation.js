@@ -44,8 +44,7 @@ export const transactionSchemas = {
     category: Joi.string().min(1).max(50).required(),
     accountId: Joi.string().required(),
     date: Joi.date().max("now").required(),
-    // Allow optional client-provided time string (e.g., 11:15 AM)
-    time: Joi.string().max(20).optional(),
+    time: Joi.string().optional(),
   }),
 
   update: Joi.object({
@@ -55,8 +54,7 @@ export const transactionSchemas = {
     category: Joi.string().min(1).max(50),
     accountId: Joi.string(),
     date: Joi.date().max("now"),
-    // Allow optional client-provided time updates
-    time: Joi.string().max(20).optional(),
+    time: Joi.string().optional(),
   }),
 };
 
