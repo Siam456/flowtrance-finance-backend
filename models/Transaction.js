@@ -45,11 +45,16 @@ const transactionSchema = new mongoose.Schema(
     },
     time: {
       type: String,
-      default: () =>
-        new Date().toLocaleTimeString("en-US", {
+      default: () => {
+        // Get current time in system's detected timezone
+        const now = new Date();
+        return now.toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit",
-        }),
+          // Auto-detect system timezone
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+      },
     },
   },
   {

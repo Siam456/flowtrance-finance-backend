@@ -10,8 +10,7 @@ import {
 export const createTransaction = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { type, amount, description, category, accountId, date, time } =
-      req.body;
+    const { type, amount, description, category, accountId, date } = req.body;
 
     // Verify account exists and belongs to user
     const account = await Account.findOne({ _id: accountId, userId });
@@ -23,18 +22,6 @@ export const createTransaction = async (req, res) => {
     }
 
     // Create transaction
-    // Parse provided date (YYYY-MM-DD) as local date to avoid timezone shifting
-    let parsedDate = null;
-    if (typeof date === "string" && /\d{4}-\d{2}-\d{2}/.test(date)) {
-      const parts = date.split("-").map((n) => parseInt(n, 10));
-      const y = parts[0];
-      const m = parts[1];
-      const d = parts[2];
-      parsedDate = new Date(y, m - 1, d);
-    } else if (date) {
-      parsedDate = new Date(date);
-    }
-
     const transaction = new Transaction({
       userId,
       accountId,
@@ -42,9 +29,7 @@ export const createTransaction = async (req, res) => {
       amount,
       description,
       category,
-      date: parsedDate || new Date(),
-      // Prefer client-provided local time string when available
-      ...(time ? { time } : {}),
+      date: new Date(date),
     });
 
     await transaction.save();
