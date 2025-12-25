@@ -3,6 +3,7 @@ import Transaction from "../models/Transaction.js";
 import FixedExpense from "../models/FixedExpense.js";
 import PossibleExpense from "../models/PossibleExpense.js";
 import Budget from "../models/Budget.js";
+import TargetSavings from "../models/TargetSavings.js";
 import mongoose from "mongoose";
 
 export const getDashboard = async (req, res) => {
@@ -44,6 +45,7 @@ export const getDashboard = async (req, res) => {
       possibleExpenses,
       budgets,
       analytics,
+      savingsOverview,
     ] = await Promise.all([
       Account.find({ userId, isActive: true }).sort({ name: 1 }),
       Transaction.getUserTransactions(userId, {
@@ -55,6 +57,7 @@ export const getDashboard = async (req, res) => {
       PossibleExpense.getUserPossibleExpenses(userId),
       Budget.getBudgetWithSpending(userId, queryMonth),
       getAnalyticsData(userId, queryMonth),
+      getSavingsOverviewData(userId, queryMonth),
     ]);
 
     // Calculate total balance
@@ -109,6 +112,7 @@ export const getDashboard = async (req, res) => {
             : 0,
         ...analytics,
       },
+      savingsOverview,
     };
 
     res.json({
@@ -219,6 +223,92 @@ const getAnalyticsData = async (userId, month) => {
       categoryBreakdown: {},
       topCategories: [],
       monthlyTrend: [],
+    };
+  }
+};
+
+const getSavingsOverviewData = async (userId, month) => {
+  try {
+    // Get all active targets
+    const targets = await TargetSavings.find({
+      userId,
+      isActive: true,
+    }).populate("accountId", "name");
+
+    // Get total balance from accounts
+    const totalBalance = await mongoose.model("Account").aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          isActive: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBalance: { $sum: "$balance" },
+        },
+      },
+    ]);
+
+    const totalBalanceAmount = totalBalance[0]?.totalBalance || 0;
+    const totalSavingsTarget = targets.reduce(
+      (sum, target) => sum + target.targetAmount,
+      0
+    );
+
+    // Get current month's expenses
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const monthlyExpensesAgg = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: "expense",
+          date: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalExpenses: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const monthlyExpenses = monthlyExpensesAgg[0]?.totalExpenses || 0;
+
+    // Treat configured target amounts as reserved savings for display
+    const totalCurrentSavings = totalSavingsTarget;
+    // Spendable funds without touching reserved savings, minus current month expenses
+    const availableForSpending = Math.max(
+      totalBalanceAmount - totalSavingsTarget - monthlyExpenses,
+      0
+    );
+    const savingsProgress =
+      totalSavingsTarget > 0
+        ? (totalCurrentSavings / totalSavingsTarget) * 100
+        : 0;
+
+    return {
+      totalSavingsTarget,
+      totalCurrentSavings,
+      totalBalance: totalBalanceAmount,
+      availableForSpending,
+      savingsProgress,
+      activeTargets: targets.map((target) => target.getSummary()),
+    };
+  } catch (error) {
+    console.error("Get savings overview error:", error);
+    return {
+      totalSavingsTarget: 0,
+      totalCurrentSavings: 0,
+      totalBalance: 0,
+      availableForSpending: 0,
+      savingsProgress: 0,
+      activeTargets: [],
     };
   }
 };

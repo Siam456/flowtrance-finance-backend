@@ -147,28 +147,36 @@ targetSavingsSchema.statics.getTargetWithAnalysis = async function (
   // Get current month's expenses
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const endDate = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999
+  );
 
-  const monthlyExpensesAgg = await mongoose.model("Transaction").aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        type: "expense",
-        date: { $gte: startDate, $lte: endDate },
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        totalExpenses: { $sum: "$amount" },
-      },
-    },
-  ]);
+  // const monthlyExpensesAgg = await mongoose.model("Transaction").aggregate([
+  //   {
+  //     $match: {
+  //       userId: new mongoose.Types.ObjectId(userId),
+  //       type: "expense",
+  //       date: { $gte: startDate, $lte: endDate },
+  //     },
+  //   },
+  //   {
+  //     $group: {
+  //       _id: null,
+  //       totalExpenses: { $sum: "$amount" },
+  //     },
+  //   },
+  // ]);
 
-  const monthlyExpenses = monthlyExpensesAgg[0]?.totalExpenses || 0;
+  // const monthlyExpenses = monthlyExpensesAgg[0]?.totalExpenses || 0;
 
   const availableForSpending = Math.max(
-    totalBalanceAmount - totalCurrentSavings - monthlyExpenses,
+    totalBalanceAmount - totalCurrentSavings,
     0
   );
 
