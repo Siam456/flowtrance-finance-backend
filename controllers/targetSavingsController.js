@@ -1,5 +1,6 @@
 import TargetSavings from "../models/TargetSavings.js";
 import Transaction from "../models/Transaction.js";
+import Budget from "../models/Budget.js";
 import mongoose from "mongoose";
 
 // Create a new target savings goal
@@ -180,7 +181,7 @@ export const checkTargetSavingsWarning = async (req, res) => {
 
     const warnings = [];
 
-    // Compute spendable funds without touching savings: total balance - total current savings
+    // Get total balance
     const totalBalanceAgg = await mongoose.model("Account").aggregate([
       {
         $match: {
@@ -196,16 +197,34 @@ export const checkTargetSavingsWarning = async (req, res) => {
       },
     ]);
     const totalBalanceAmount = totalBalanceAgg[0]?.totalBalance || 0;
-    const totalCurrentSavings = targets.reduce(
-      (sum, t) => sum + (t.currentAmount || 0),
+    
+    // Get total savings target (not current amount, but target amount)
+    const totalSavingsTarget = targets.reduce(
+      (sum, t) => sum + (t.targetAmount || 0),
       0
     );
+    
+    // Get current month's total budget
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM format
+    const currentMonthBudgets = await Budget.find({
+      userId,
+      month: currentMonth,
+    });
+    const totalBudget = currentMonthBudgets.reduce(
+      (sum, budget) => sum + (budget.amount || 0),
+      0
+    );
+    
+    // Calculate available for spending: balance - savings - budget
+    // This represents money available after reserving savings and budget
     const availableForSpending = Math.max(
-      totalBalanceAmount - totalCurrentSavings,
+      totalBalanceAmount - totalSavingsTarget - totalBudget,
       0
     );
     const spendingAmount = parseFloat(amount);
 
+    // Only show warning if spending would dip into savings
+    // This means: spendingAmount > availableForSpending (balance - savings - budget)
     if (spendingAmount > availableForSpending) {
       warnings.push({
         type: "overall",
