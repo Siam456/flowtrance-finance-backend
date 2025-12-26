@@ -352,3 +352,185 @@ const groupTransactionsByDate = (transactions) => {
       ),
     }));
 };
+
+// Helper function to get query month from request
+const getQueryMonth = (req) => {
+  const { month, year } = req.query;
+  if (month && year) {
+    return `${year}-${String(month).padStart(2, "0")}`;
+  } else if (month) {
+    return `${new Date().getFullYear()}-${String(month).padStart(2, "0")}`;
+  } else if (year) {
+    return `${year}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  } else {
+    return new Date().toISOString().substring(0, 7);
+  }
+};
+
+// Get dashboard summary (quick stats only)
+export const getDashboardSummary = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const queryMonth = getQueryMonth(req);
+
+    // Calculate date range for transactions
+    const startDate = new Date(queryMonth + "-01");
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0
+    );
+
+    // Get only essential data in parallel
+    const [accounts, transactions] = await Promise.all([
+      Account.find({ userId, isActive: true }).sort({ name: 1 }),
+      Transaction.getUserTransactions(userId, {
+        startDate: startDate.toISOString().split("T")[0],
+        endDate: endDate.toISOString().split("T")[0],
+        limit: 100,
+      }),
+    ]);
+
+    // Calculate totals
+    const totalBalance = accounts.reduce(
+      (sum, account) => sum + account.balance,
+      0
+    );
+
+    const monthlyIncome = transactions
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const monthlyExpenses = transactions
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    res.json({
+      success: true,
+      data: {
+        user: req.user.toPublicJSON(),
+        totalBalance,
+        monthlyIncome,
+        monthlyExpenses,
+        savingsRate:
+          monthlyIncome > 0
+            ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100
+            : 0,
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard summary error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get transactions
+export const getDashboardTransactions = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const queryMonth = getQueryMonth(req);
+
+    // Calculate date range for transactions
+    const startDate = new Date(queryMonth + "-01");
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0
+    );
+
+    const transactions = await Transaction.getUserTransactions(userId, {
+      startDate: startDate.toISOString().split("T")[0],
+      endDate: endDate.toISOString().split("T")[0],
+      limit: 100,
+    });
+
+    const groupedTransactions = groupTransactionsByDate(transactions);
+
+    res.json({
+      success: true,
+      data: groupedTransactions,
+    });
+  } catch (error) {
+    console.error("Dashboard transactions error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get budgets
+export const getDashboardBudgets = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const queryMonth = getQueryMonth(req);
+
+    const budgets = await Budget.getBudgetWithSpending(userId, queryMonth);
+
+    res.json({
+      success: true,
+      data: budgets,
+    });
+  } catch (error) {
+    console.error("Dashboard budgets error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get savings overview
+export const getDashboardSavings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const queryMonth = getQueryMonth(req);
+
+    const savingsOverview = await getSavingsOverviewData(userId, queryMonth);
+
+    res.json({
+      success: true,
+      data: savingsOverview,
+    });
+  } catch (error) {
+    console.error("Dashboard savings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+// Get analytics (lazy loaded)
+export const getDashboardAnalytics = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const queryMonth = getQueryMonth(req);
+
+    const analytics = await getAnalyticsData(userId, queryMonth);
+
+    // Get accounts for total balance calculation
+    const accounts = await Account.find({ userId, isActive: true });
+    const totalBalance = accounts.reduce(
+      (sum, account) => sum + account.balance,
+      0
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...analytics,
+        totalBalance,
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard analytics error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};

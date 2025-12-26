@@ -1,6 +1,13 @@
 import express from "express";
 import { auth } from "../middleware/auth.js";
-import { getDashboard } from "../controllers/dashboardController.js";
+import {
+  getDashboard,
+  getDashboardSummary,
+  getDashboardTransactions,
+  getDashboardBudgets,
+  getDashboardSavings,
+  getDashboardAnalytics,
+} from "../controllers/dashboardController.js";
 
 const router = express.Router();
 
@@ -51,5 +58,12 @@ const router = express.Router();
  *               $ref: '#/components/schemas/Error'
  */
 router.get("/", auth, getDashboard);
+
+// Split endpoints for optimized loading
+router.get("/summary", auth, getDashboardSummary);
+router.get("/transactions", auth, getDashboardTransactions);
+router.get("/budgets", auth, getDashboardBudgets);
+router.get("/savings", auth, getDashboardSavings);
+router.get("/analytics", auth, getDashboardAnalytics);
 
 export default router;
