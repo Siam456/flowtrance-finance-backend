@@ -322,7 +322,8 @@ const groupTransactionsByDate = (transactions) => {
   transactions.forEach((transaction) => {
     // Extract local date from the transaction date
     // The date is stored in UTC, but we need to group by the local date
-    // Using server's local timezone (Asia/Dhaka) to extract date components
+    // Using server's local timezone (Asia/Dhaka UTC+6) to extract date components
+    // This ensures transactions are grouped by the user's local date, not UTC date
     const transactionDate = new Date(transaction.date);
     
     // Get the local date components using server's timezone
