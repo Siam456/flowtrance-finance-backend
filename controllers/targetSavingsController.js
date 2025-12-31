@@ -204,27 +204,17 @@ export const checkTargetSavingsWarning = async (req, res) => {
       0
     );
     
-    // Get current month's total budget
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM format
-    const currentMonthBudgets = await Budget.find({
-      userId,
-      month: currentMonth,
-    });
-    const totalBudget = currentMonthBudgets.reduce(
-      (sum, budget) => sum + (budget.amount || 0),
-      0
-    );
-    
-    // Calculate available for spending: balance - savings - budget
-    // This represents money available after reserving savings and budget
+    // Calculate available for spending: balance - savings target
+    // Note: totalBalanceAmount already reflects past expenses
+    // Budget is a spending limit, not money to reserve, so we don't subtract it
     const availableForSpending = Math.max(
-      totalBalanceAmount - totalSavingsTarget - totalBudget,
+      totalBalanceAmount - totalSavingsTarget,
       0
     );
     const spendingAmount = parseFloat(amount);
 
     // Only show warning if spending would dip into savings
-    // This means: spendingAmount > availableForSpending (balance - savings - budget)
+    // This means: spendingAmount > availableForSpending (balance - savings)
     if (spendingAmount > availableForSpending) {
       warnings.push({
         type: "overall",

@@ -285,9 +285,10 @@ const getSavingsOverviewData = async (userId, month) => {
 
     // Treat configured target amounts as reserved savings for display
     const totalCurrentSavings = totalSavingsTarget;
-    // Spendable funds without touching reserved savings, minus current month expenses
+    // Spendable funds without touching reserved savings
+    // Note: totalBalanceAmount already reflects all past expenses, so we don't subtract monthlyExpenses
     const availableForSpending = Math.max(
-      totalBalanceAmount - totalSavingsTarget - monthlyExpenses,
+      totalBalanceAmount - totalSavingsTarget,
       0
     );
     const savingsProgress =
