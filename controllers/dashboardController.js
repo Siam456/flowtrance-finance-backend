@@ -320,33 +320,21 @@ const groupTransactionsByDate = (transactions) => {
   const groups = {};
 
   transactions.forEach((transaction) => {
-    // Extract local date from the transaction date
-    // The date is stored in UTC, but we need to group by the local date
-    // Using server's local timezone (Asia/Dhaka UTC+6) to extract date components
-    // This ensures transactions are grouped by the user's local date, not UTC date
-    const transactionDate = new Date(transaction.date);
-    
-    // Get the local date components using server's timezone
-    // getFullYear(), getMonth(), getDate() use local timezone
-    const year = transactionDate.getFullYear();
-    const month = String(transactionDate.getMonth() + 1).padStart(2, '0');
-    const day = String(transactionDate.getDate()).padStart(2, '0');
-    const localDateString = `${year}-${month}-${day}`;
-    
-    if (!groups[localDateString]) {
-      groups[localDateString] = [];
+    const date = transaction.date.toISOString().split("T")[0];
+    if (!groups[date]) {
+      groups[date] = [];
     }
-    groups[localDateString].push({
+    groups[date].push({
       id: transaction._id,
       type: transaction.type,
       amount: transaction.amount,
       description: transaction.description,
       category: transaction.category,
-      date: transaction.date.toISOString(), // Return full ISO string for frontend timezone handling
+      date: transaction.date.toISOString().split("T")[0],
       account: transaction.accountId?._id || null,
       accountName: transaction.accountId?.name || "Unknown Account",
       time: transaction.time,
-      createdAt: transaction.createdAt, // Include createdAt for sorting
+      createdAt: transaction.createdAt,
     });
   });
 
