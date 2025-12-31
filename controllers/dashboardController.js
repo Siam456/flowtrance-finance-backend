@@ -320,12 +320,22 @@ const groupTransactionsByDate = (transactions) => {
   const groups = {};
 
   transactions.forEach((transaction) => {
-    // Use full ISO date for grouping - frontend will handle timezone conversion for display
-    const date = transaction.date.toISOString().split("T")[0];
-    if (!groups[date]) {
-      groups[date] = [];
+    // Extract local date from the transaction date
+    // The date is stored in UTC, but we need to group by the local date
+    // Using server's local timezone (Asia/Dhaka) to extract date components
+    const transactionDate = new Date(transaction.date);
+    
+    // Get the local date components using server's timezone
+    // getFullYear(), getMonth(), getDate() use local timezone
+    const year = transactionDate.getFullYear();
+    const month = String(transactionDate.getMonth() + 1).padStart(2, '0');
+    const day = String(transactionDate.getDate()).padStart(2, '0');
+    const localDateString = `${year}-${month}-${day}`;
+    
+    if (!groups[localDateString]) {
+      groups[localDateString] = [];
     }
-    groups[date].push({
+    groups[localDateString].push({
       id: transaction._id,
       type: transaction.type,
       amount: transaction.amount,
