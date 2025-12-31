@@ -29,13 +29,11 @@ export const getDashboard = async (req, res) => {
       queryMonth = new Date().toISOString().substring(0, 7);
     }
 
-    // Calculate date range for transactions
-    const startDate = new Date(queryMonth + "-01");
-    const endDate = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth() + 1,
-      0
-    );
+    // Calculate date range for transactions in UTC
+    // Parse the month string and create UTC dates to avoid timezone shifts
+    const [yearNum, monthNum] = queryMonth.split('-').map(Number);
+    const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
+    const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
 
     // Get all data in parallel for better performance
     const [
@@ -49,8 +47,8 @@ export const getDashboard = async (req, res) => {
     ] = await Promise.all([
       Account.find({ userId, isActive: true }).sort({ name: 1 }),
       Transaction.getUserTransactions(userId, {
-        startDate: startDate.toISOString().split("T")[0],
-        endDate: endDate.toISOString().split("T")[0],
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
         limit: 100,
       }),
       FixedExpense.getUserFixedExpenses(userId),
@@ -130,13 +128,10 @@ export const getDashboard = async (req, res) => {
 
 const getAnalyticsData = async (userId, month) => {
   try {
-    // Calculate analytics directly
-    const startDate = new Date(month + "-01");
-    const endDate = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth() + 1,
-      0
-    );
+    // Calculate analytics directly using UTC dates
+    const [yearNum, monthNum] = month.split('-').map(Number);
+    const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
+    const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
 
     const [categoryBreakdown, topCategories] = await Promise.all([
       Transaction.aggregate([
@@ -325,6 +320,7 @@ const groupTransactionsByDate = (transactions) => {
   const groups = {};
 
   transactions.forEach((transaction) => {
+    // Use full ISO date for grouping - frontend will handle timezone conversion for display
     const date = transaction.date.toISOString().split("T")[0];
     if (!groups[date]) {
       groups[date] = [];
@@ -335,10 +331,11 @@ const groupTransactionsByDate = (transactions) => {
       amount: transaction.amount,
       description: transaction.description,
       category: transaction.category,
-      date: date,
+      date: transaction.date.toISOString(), // Return full ISO string for frontend timezone handling
       account: transaction.accountId?._id || null,
       accountName: transaction.accountId?.name || "Unknown Account",
       time: transaction.time,
+      createdAt: transaction.createdAt, // Include createdAt for sorting
     });
   });
 
@@ -373,20 +370,17 @@ export const getDashboardSummary = async (req, res) => {
     const userId = req.user._id;
     const queryMonth = getQueryMonth(req);
 
-    // Calculate date range for transactions
-    const startDate = new Date(queryMonth + "-01");
-    const endDate = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth() + 1,
-      0
-    );
+    // Calculate date range for transactions in UTC
+    const [yearNum, monthNum] = queryMonth.split('-').map(Number);
+    const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
+    const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
 
     // Get only essential data in parallel
     const [accounts, transactions] = await Promise.all([
       Account.find({ userId, isActive: true }).sort({ name: 1 }),
       Transaction.getUserTransactions(userId, {
-        startDate: startDate.toISOString().split("T")[0],
-        endDate: endDate.toISOString().split("T")[0],
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
         limit: 100,
       }),
     ]);
@@ -433,17 +427,14 @@ export const getDashboardTransactions = async (req, res) => {
     const userId = req.user._id;
     const queryMonth = getQueryMonth(req);
 
-    // Calculate date range for transactions
-    const startDate = new Date(queryMonth + "-01");
-    const endDate = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth() + 1,
-      0
-    );
+    // Calculate date range for transactions in UTC
+    const [yearNum, monthNum] = queryMonth.split('-').map(Number);
+    const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0, 0));
+    const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
 
     const transactions = await Transaction.getUserTransactions(userId, {
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: endDate.toISOString().split("T")[0],
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
       limit: 100,
     });
 

@@ -89,9 +89,13 @@ transactionSchema.statics.getUserTransactions = async function (
   const query = { userId };
 
   if (filters.startDate && filters.endDate) {
+    // Handle both ISO strings and date-only strings
+    const startDate = new Date(filters.startDate);
+    const endDate = new Date(filters.endDate);
+    
     query.date = {
-      $gte: new Date(filters.startDate),
-      $lte: new Date(filters.endDate),
+      $gte: startDate,
+      $lte: endDate,
     };
   }
 

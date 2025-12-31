@@ -10,7 +10,7 @@ import {
 export const createTransaction = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { type, amount, description, category, accountId, date } = req.body;
+    const { type, amount, description, category, accountId, date, time } = req.body;
 
     // Verify account exists and belongs to user
     const account = await Account.findOne({ _id: accountId, userId });
@@ -21,8 +21,8 @@ export const createTransaction = async (req, res) => {
       });
     }
 
-    // Create transaction
-    const transaction = new Transaction({
+    // Create transaction with explicit time if provided
+    const transactionData = {
       userId,
       accountId,
       type,
@@ -30,7 +30,14 @@ export const createTransaction = async (req, res) => {
       description,
       category,
       date: new Date(date),
-    });
+    };
+
+    // Only add time if explicitly provided (from frontend with user's timezone)
+    if (time) {
+      transactionData.time = time;
+    }
+
+    const transaction = new Transaction(transactionData);
 
     await transaction.save();
 
@@ -81,7 +88,7 @@ export const createTransaction = async (req, res) => {
         amount: transaction.amount,
         description: transaction.description,
         category: transaction.category,
-        date: transaction.date.toISOString().split("T")[0],
+        date: transaction.date.toISOString(),
         account: transaction.accountId._id,
         accountName: transaction.accountId.name,
         time: transaction.time,
@@ -129,7 +136,7 @@ export const getTransactions = async (req, res) => {
         amount: transaction.amount,
         description: transaction.description,
         category: transaction.category,
-        date: transaction.date.toISOString().split("T")[0],
+        date: transaction.date.toISOString(),
         account: transaction?.accountId?._id,
         accountName: transaction?.accountId?.name,
         time: transaction.time,
@@ -195,7 +202,7 @@ export const updateTransaction = async (req, res) => {
         amount: updatedTransaction.amount,
         description: updatedTransaction.description,
         category: updatedTransaction.category,
-        date: updatedTransaction.date.toISOString().split("T")[0],
+        date: updatedTransaction.date.toISOString(),
         account: updatedTransaction.accountId._id,
         accountName: updatedTransaction.accountId.name,
         time: updatedTransaction.time,
